@@ -71,19 +71,20 @@ function showDashboard(email) {
     document.getElementById('dashboardWrapper').classList.add('active');
     document.body.style.alignItems = 'stretch';
 
-    // Personalize
-    const name = email.split('@')[0];
+    const name        = email.split('@')[0];
     const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-    document.getElementById('dashName').textContent = displayName;
-    document.getElementById('dashAvatar').textContent = displayName.substring(0, 2).toUpperCase();
+    document.getElementById('dashName').textContent    = displayName;
+    document.getElementById('dashAvatar').textContent  = displayName.substring(0, 2).toUpperCase();
 
-    // Show menu toggle on mobile
     if (window.innerWidth <= 768) {
         document.getElementById('menuToggle').style.display = 'flex';
     }
+
+    loadOpportunities();
 }
 
 function handleLogout() {
+    clearToken();
     document.getElementById('dashboardWrapper').classList.remove('active');
     document.getElementById('authWrapper').style.display = 'flex';
     document.body.style.alignItems = '';
@@ -243,6 +244,48 @@ document.getElementById('courseModal').addEventListener('click', function(e) {
     }
 });
 
+async function loadOpportunities() {
+    const grid = document.querySelector('.opportunities-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '<p style="color:var(--qf-text-light);padding:20px;">Loading opportunities…</p>';
+
+    const result = await apiGetOpportunities();
+
+    if (!result.ok) {
+        grid.innerHTML = '<p style="color:var(--qf-text-light);padding:20px;">Could not load opportunities. Please refresh.</p>';
+        return;
+    }
+
+    const opportunities = result.data;
+    grid.innerHTML = '';
+
+    if (opportunities.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--qf-text-light);">
+            <p style="font-size:16px;margin-bottom:8px;">No opportunities yet.</p>
+            <p>Click <strong>Add New Opportunity</strong> to create your first one.</p>
+          </div>`;
+        return;
+    }
+
+    opportunities.forEach(opp => grid.appendChild(buildOpportunityCard(opp)));
+}
+
+async function confirmDeleteOpportunity(id, name) {
+    if (!confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`)) return;
+
+    const result = await apiDeleteOpportunity(id);
+
+    if (!result.ok) {
+        showToast(result.data.error || 'Could not delete opportunity.');
+        return;
+    }
+
+    showToast(`"${name}" has been deleted.`);
+    await loadOpportunities();
+}
+
 // ===== OPPORTUNITY DETAILS MODAL =====
 function openOpportunityDetails(title, details) {
     document.getElementById('opportunityDetailTitle').textContent = title;
@@ -291,6 +334,75 @@ function closeCollaboratorCoursesModal() {
     document.getElementById('collaboratorCoursesModal').classList.remove('active');
 }
 
+function buildOpportunityCard(opp) {
+    const card = document.createElement('div');
+    card.className = 'opportunity-card';
+    card.setAttribute('data-id', opp.id);
+
+    const skillsHtml = opp.skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('');
+    const applicantsText = opp.max_applicants ? `${opp.max_applicants} max applicants` : '0 applicants';
+
+    card.innerHTML = `
+      <div class="opportunity-card-header">
+        <h5>${escapeHtml(opp.name)}</h5>
+        <div class="opportunity-meta">
+          <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escapeHtml(opp.duration)}</span>
+          <span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(opp.start_date)}</span>
+        </div>
+      </div>
+      <p class="opportunity-description">${escapeHtml(opp.description)}</p>
+      <div class="opportunity-skills">
+        <div class="opportunity-skills-label">Skills You'll Gain</div>
+        <div class="skills-tags">${skillsHtml}</div>
+      </div>
+      <div class="opportunity-footer">
+        <span class="applicants-count">${escapeHtml(applicantsText)}</span>
+        <div style="display:flex;gap:8px;">
+          <button class="view-course-btn" style="width:auto;padding:8px 12px;background:var(--qf-green);" data-action="view">View</button>
+          <button class="view-course-btn" style="width:auto;padding:8px 12px;background:#4a90d9;" data-action="edit">Edit</button>
+          <button class="view-course-btn" style="width:auto;padding:8px 12px;background:var(--qf-red);" data-action="delete">Delete</button>
+        </div>
+      </div>`;
+
+    // View
+    card.querySelector('[data-action="view"]').addEventListener('click', () => {
+        openOpportunityDetails(opp.name, {
+            duration:            opp.duration,
+            startDate:           opp.start_date,
+            description:         opp.description,
+            skills:              opp.skills,
+            applicants:          opp.max_applicants || 0,
+            futureOpportunities: opp.future_opportunities,
+            prerequisites:       '',
+        });
+    });
+
+    // Edit
+    card.querySelector('[data-action="edit"]').addEventListener('click', () => openEditModal(opp));
+
+    // Delete
+    card.querySelector('[data-action="delete"]').addEventListener('click', () => confirmDeleteOpportunity(opp.id, opp.name));
+
+    return card;
+}
+
+function openEditModal(opp) {
+    // Reuse the same modal — just pre-fill the fields
+    document.getElementById('oppName').value        = opp.name;
+    document.getElementById('oppDuration').value    = opp.duration;
+    document.getElementById('oppStartDate').value   = opp.start_date;
+    document.getElementById('oppDescription').value = opp.description;
+    document.getElementById('oppSkills').value      = opp.skills.join(', ');
+    document.getElementById('oppCategory').value    = opp.category;
+    document.getElementById('oppFuture').value      = opp.future_opportunities;
+    document.getElementById('oppMaxApplicants').value = opp.max_applicants || '';
+
+    // Tag the form with the ID being edited
+    document.getElementById('opportunityForm').setAttribute('data-edit-id', opp.id);
+
+    openOpportunityModal();
+}
+
 function approveCourse(courseName) {
     showToast(courseName + ' has been approved!');
     // In a real app, you would update the course status here
@@ -329,82 +441,60 @@ document.getElementById('opportunityModal').addEventListener('click', function(e
 });
 
 // Handle opportunity form submission
-        document.getElementById('opportunityForm').addEventListener('submit', function(e) {
-            e.preventDefault();
+document.getElementById('opportunityForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
 
-            // collect values
-            const name = document.getElementById('oppName').value.trim();
-            const duration = document.getElementById('oppDuration').value.trim();
-            const startDate = document.getElementById('oppStartDate').value;
-            const description = document.getElementById('oppDescription').value.trim();
-            const skillsRaw = document.getElementById('oppSkills').value.trim();
-            const category = document.getElementById('oppCategory').value;
-            const futureOpportunities = document.getElementById('oppFuture').value.trim();
-            const maxApplicants = document.getElementById('oppMaxApplicants').value.trim();
+    const name                = document.getElementById('oppName').value.trim();
+    const duration            = document.getElementById('oppDuration').value.trim();
+    const startDate           = document.getElementById('oppStartDate').value;
+    const description         = document.getElementById('oppDescription').value.trim();
+    const skillsRaw           = document.getElementById('oppSkills').value.trim();
+    const category            = document.getElementById('oppCategory').value;
+    const futureOpportunities = document.getElementById('oppFuture').value.trim();
+    const maxApplicants       = document.getElementById('oppMaxApplicants').value.trim();
 
-            // basic validation
-            if (!name || !duration || !startDate || !description || !skillsRaw || !category || !futureOpportunities) {
-                showToast('Please fill all required fields');
-                return;
-            }
+    if (!name || !duration || !startDate || !description || !skillsRaw || !category || !futureOpportunities) {
+        showToast('Please fill all required fields');
+        return;
+    }
 
-            // parse skills
-            const skills = skillsRaw.split(',').map(s => s.trim()).filter(Boolean);
+    const payload = {
+        name,
+        duration,
+        start_date: startDate,
+        description,
+        skills: skillsRaw,
+        category,
+        future_opportunities: futureOpportunities,
+        max_applicants: maxApplicants ? parseInt(maxApplicants, 10) : null,
+    };
 
-            // create opportunity card element
-            const card = document.createElement('div');
-            card.className = 'opportunity-card';
+    const editId = this.getAttribute('data-edit-id');
+    const btn    = this.querySelector('button[type="submit"]');
+    btn.disabled    = true;
+    btn.textContent = editId ? 'Saving…' : 'Creating…';
 
-            // header and meta
-            const headerHtml = `
-                <div class="opportunity-card-header">
-                    <h5>${escapeHtml(name)}</h5>
-                    <div class="opportunity-meta">
-                        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escapeHtml(duration)}</span>
-                        <span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(startDate)}</span>
-                    </div>
-                </div>
-                <p class="opportunity-description">${escapeHtml(description)}</p>
-            `;
+    let result;
+    if (editId) {
+        result = await apiUpdateOpportunity(editId, payload);
+    } else {
+        result = await apiCreateOpportunity(payload);
+    }
 
-            // skills tags
-            const skillsHtml = `<div class="opportunity-skills"><div class="opportunity-skills-label">Skills You'll Gain</div><div class="skills-tags">
-                ${skills.map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
-            </div></div>`;
+    btn.disabled    = false;
+    btn.textContent = editId ? 'Save Changes' : 'Create Opportunity';
 
-            // footer
-            const applicantsCount = maxApplicants ? `${parseInt(maxApplicants,10)} applicants` : '0 applicants';
-            const footerHtml = `
-                <div class="opportunity-footer">
-                    <span class="applicants-count">${escapeHtml(applicantsCount)}</span>
-                    <button class="view-course-btn" style="width: auto; padding: 8px 16px;">View Details</button>
-                </div>
-            `;
+    if (!result.ok) {
+        showToast(result.data.error || 'Something went wrong.');
+        return;
+    }
 
-            card.innerHTML = headerHtml + skillsHtml + footerHtml;
-
-            // wire up the View Details button to open details modal
-            const viewBtn = card.querySelector('.view-course-btn');
-            viewBtn.addEventListener('click', function() {
-                openOpportunityDetails(name, {
-                    duration: duration,
-                    startDate: startDate,
-                    description: description,
-                    skills: skills,
-                    applicants: maxApplicants ? parseInt(maxApplicants,10) : 0,
-                    futureOpportunities: futureOpportunities,
-                    prerequisites: ''
-                });
-            });
-
-            // append to grid
-            const grid = document.querySelector('.opportunities-grid');
-            if (grid) grid.appendChild(card);
-
-            showToast('Opportunity created successfully!');
-            closeOpportunityModal();
-            this.reset();
-        });
+    showToast(editId ? 'Opportunity updated!' : 'Opportunity created successfully!');
+    this.removeAttribute('data-edit-id');
+    closeOpportunityModal();
+    this.reset();
+    await loadOpportunities();
+});
 
         // small helper to avoid HTML injection when inserting text
         function escapeHtml(str) {
@@ -632,76 +722,135 @@ function filterVerifiers() {
 }
 
 // ===== LOGIN =====
-document.getElementById('loginForm').addEventListener('submit', function(e) {
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     clearAllErrors('loginForm');
     let valid = true;
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value.trim();
-    const captchaInput = document.getElementById('loginCaptchaInput').value.trim();
 
-    if (!email || !isValidEmail(email)) { showError('loginEmailErr'); document.getElementById('loginEmail').classList.add('error'); valid = false; }
-    if (!password) { showError('loginPasswordErr','Please enter your password'); document.getElementById('loginPassword').classList.add('error'); valid = false; }
-    if (!captchaInput) { showError('loginCaptchaErr','Please enter the captcha code'); valid = false; }
-    else if (captchaInput !== captchas.login) { showError('loginCaptchaErr','Captcha does not match. Please try again.'); valid = false; generateCaptcha('login'); }
+    const email         = document.getElementById('loginEmail').value.trim();
+    const password      = document.getElementById('loginPassword').value.trim();
+    const captchaInput  = document.getElementById('loginCaptchaInput').value.trim();
+    const rememberMe    = document.querySelector('#loginForm .remember-me input').checked;
+
+    if (!email || !isValidEmail(email)) {
+        showError('loginEmailErr');
+        document.getElementById('loginEmail').classList.add('error');
+        valid = false;
+    }
+    if (!password) {
+        showError('loginPasswordErr', 'Please enter your password');
+        document.getElementById('loginPassword').classList.add('error');
+        valid = false;
+    }
+    if (!captchaInput) {
+        showError('loginCaptchaErr', 'Please enter the captcha code');
+        valid = false;
+    } else if (captchaInput !== captchas.login) {
+        showError('loginCaptchaErr', 'Captcha does not match. Please try again.');
+        valid = false;
+        generateCaptcha('login');
+    }
 
     if (!valid) { shakeForm('loginForm'); return; }
 
-    showToast('Login successful! Redirecting...');
-    setTimeout(() => showDashboard(email), 1200);
+    const btn = this.querySelector('button[type="submit"]');
+    btn.textContent = 'Signing in…';
+    btn.disabled = true;
+
+    const result = await apiLogin(email, password, rememberMe);
+
+    btn.textContent = 'Sign In';
+    btn.disabled = false;
+
+    if (!result.ok) {
+        showError('loginPasswordErr', result.data.error || 'Invalid email or password.');
+        document.getElementById('loginPassword').classList.add('error');
+        shakeForm('loginForm');
+        generateCaptcha('login');
+        return;
+    }
+
+    saveToken(result.data.token, rememberMe);
+    showToast('Login successful! Loading dashboard…');
+    setTimeout(() => showDashboard(email), 1000);
     generateCaptcha('login');
 });
 
 // ===== SIGNUP =====
-document.getElementById('signupForm').addEventListener('submit', function(e) {
+document.getElementById('signupForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     clearAllErrors('signupForm');
     let valid = true;
-    const name = document.getElementById('signupName').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value.trim();
-    const confirmPassword = document.getElementById('signupConfirmPassword').value.trim();
-    const captchaInput = document.getElementById('signupCaptchaInput').value.trim();
 
-    if (!name) { showError('signupNameErr'); document.getElementById('signupName').classList.add('error'); valid = false; }
+    const name            = document.getElementById('signupName').value.trim();
+    const email           = document.getElementById('signupEmail').value.trim();
+    const password        = document.getElementById('signupPassword').value.trim();
+    const confirmPassword = document.getElementById('signupConfirmPassword').value.trim();
+    const captchaInput    = document.getElementById('signupCaptchaInput').value.trim();
+
+    if (!name)  { showError('signupNameErr');  document.getElementById('signupName').classList.add('error');  valid = false; }
     if (!email || !isValidEmail(email)) { showError('signupEmailErr'); document.getElementById('signupEmail').classList.add('error'); valid = false; }
     if (!password || password.length < 8) { showError('signupPasswordErr'); document.getElementById('signupPassword').classList.add('error'); valid = false; }
     if (!confirmPassword || password !== confirmPassword) { showError('signupConfirmPasswordErr'); document.getElementById('signupConfirmPassword').classList.add('error'); valid = false; }
-    if (!captchaInput) { showError('signupCaptchaErr','Please enter the captcha code'); valid = false; }
-    else if (captchaInput !== captchas.signup) { showError('signupCaptchaErr','Captcha does not match.'); valid = false; generateCaptcha('signup'); }
+    if (!captchaInput) { showError('signupCaptchaErr', 'Please enter the captcha code'); valid = false; }
+    else if (captchaInput !== captchas.signup) { showError('signupCaptchaErr', 'Captcha does not match.'); valid = false; generateCaptcha('signup'); }
 
     if (!valid) { shakeForm('signupForm'); return; }
+
+    const btn = this.querySelector('button[type="submit"]');
+    btn.textContent = 'Creating…';
+    btn.disabled = true;
+
+    const result = await apiSignup(name, email, password, confirmPassword);
+
+    btn.textContent = 'Create Account';
+    btn.disabled = false;
+
+    if (!result.ok) {
+        showError('signupEmailErr', result.data.error || 'Could not create account.');
+        document.getElementById('signupEmail').classList.add('error');
+        shakeForm('signupForm');
+        return;
+    }
+
     showToast('Account created successfully!');
     generateCaptcha('signup');
-    this.reset(); checkStrength('');
+    this.reset();
+    checkStrength('');
     setTimeout(() => showPage('loginPage'), 1500);
 });
 
 // ===== FORGOT =====
-document.getElementById('forgotForm').addEventListener('submit', function(e) {
+document.getElementById('forgotForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     clearAllErrors('forgotForm');
     let valid = true;
-    const email = document.getElementById('forgotEmail').value.trim();
+
+    const email        = document.getElementById('forgotEmail').value.trim();
     const captchaInput = document.getElementById('forgotCaptchaInput').value.trim();
 
-    if (!email || !isValidEmail(email)) { showError('forgotEmailErr'); document.getElementById('forgotEmail').classList.add('error'); valid = false; }
-    if (!captchaInput) { showError('forgotCaptchaErr','Please enter the captcha code'); valid = false; }
-    else if (captchaInput !== captchas.forgot) { showError('forgotCaptchaErr','Captcha does not match.'); valid = false; generateCaptcha('forgot'); }
+    if (!email || !isValidEmail(email)) {
+        showError('forgotEmailErr');
+        document.getElementById('forgotEmail').classList.add('error');
+        valid = false;
+    }
+    if (!captchaInput) { showError('forgotCaptchaErr', 'Please enter the captcha code'); valid = false; }
+    else if (captchaInput !== captchas.forgot) { showError('forgotCaptchaErr', 'Captcha does not match.'); valid = false; generateCaptcha('forgot'); }
 
     if (!valid) { shakeForm('forgotForm'); return; }
+
+    const btn = this.querySelector('button[type="submit"]');
+    btn.textContent = 'Sending…';
+    btn.disabled = true;
+
+    await apiForgotPassword(email); // always succeeds visually (privacy)
+
+    btn.textContent = 'Send Reset Link';
+    btn.disabled = false;
+
     showToast('Reset link sent to your email!');
     generateCaptcha('forgot');
     this.reset();
-});
-
-// Clear errors on input
-document.querySelectorAll('input').forEach(input => {
-    input.addEventListener('input', function() {
-        this.classList.remove('error');
-        const err = this.closest('.form-group')?.querySelector('.error-msg');
-        if (err) err.classList.remove('show');
-    });
 });
 
 // Responsive sidebar
