@@ -197,4 +197,3 @@ In production this line would be replaced with a call to Flask-Mail or an email 
 [Watch 2-minute walkthrough](https://drive.google.com/file/d/17mHFiNjJuvMOzsLqWjHvjZypNUCrhDvy/view?usp=sharing)
 
 The demo covers: signup → login → create opportunity → edit → delete → logout → login again (proves persistence) → forgot password with terminal reset link shown.
-```
