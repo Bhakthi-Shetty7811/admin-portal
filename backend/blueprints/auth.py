@@ -125,6 +125,9 @@ def forgot_password():
         # In production you'd email this link.
         # For now, log it so you can see it in the terminal during dev/demo.
         reset_link = f"http://localhost:5000/api/reset-password/{token.token}"
+        # US-1.3: No email sending required at this stage.
+        # In production this would use Flask-Mail or SendGrid.
+        # For now the reset link is logged to the terminal as specified.
         print(f"\n[DEV] Password reset link for {email}:\n  {reset_link}\n")
 
     return jsonify({"message": "If this email is registered, a reset link has been sent."}), 200
