@@ -1,4 +1,3 @@
-```markdown
 # Qatar Foundation - Admin Portal(Backend)
 
 > Built as part of the CertifyMe Full Stack Intern Assessment.
