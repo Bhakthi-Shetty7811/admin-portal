@@ -33,7 +33,7 @@ This check is on every endpoint, not just delete. Most implementations only prot
 ---
 
 ## Project structure
-
+```
 admin-portal/
 ├── sky/                        # Pre-built frontend (not modified)
 │   ├── admin.html
@@ -67,50 +67,50 @@ admin-portal/
 
 ## Setup
 
-# 1. Clone the repo
+#### 1. Clone the repo
 ```
 git clone https://github.com/Bhakthi-Shetty7811/admin-portal.git
 cd admin-portal
 ```
 
-# 2. Move into backend
+#### 2. Move into backend
 ```
 cd backend
 ```
 
-# 3. Create and activate virtual environment
+#### 3. Create and activate virtual environment
 ```
 python -m venv venv
 ```
 
-# Mac/Linux:
+#### Mac/Linux:
 ```
 source venv/bin/activate
 ```
 
-# Windows:
+#### Windows:
 ```
 venv\Scripts\activate
 ```
 
-# 4. Install dependencies
+#### 4. Install dependencies
 ```
 pip install -r requirements.txt
 ```
 
-# 5. Create your .env file
+#### 5. Create your .env file
 ```
 cp .env.example .env
 ```
 
-# Open .env and replace the placeholder values with real secrets.
-# Generate them with:
+#### Open .env and replace the placeholder values with real secrets.
+#### Generate them with:
 ```
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
-# Run this twice - once for SECRET_KEY, once for JWT_SECRET.
+#### Run this twice - once for SECRET_KEY, once for JWT_SECRET.
 
-# 6. Start the server
+#### 6. Start the server
 ```
 python app.py
 ```
